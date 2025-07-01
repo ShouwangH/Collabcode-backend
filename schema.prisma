@@ -1,0 +1,210 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  username    String   @unique
+  firstName   String?
+  lastName    String?
+  avatar      String?
+  passwordHash String
+  role        UserRole @default(DEVELOPER)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  ownedProjects     Project[]
+  projectMembers    ProjectMember[]
+  collaborationSessions CollaborationSession[]
+  operations        Operation[]
+  authoredReviews   CodeReview[] @relation("ReviewAuthor")
+  assignedReviews   CodeReview[] @relation("ReviewAssignee")
+  reviewComments    ReviewComment[]
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  settings    Json     @default("{}")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  ownerId    String
+  owner      User              @relation(fields: [ownerId], references: [id])
+  members    ProjectMember[]
+  sessions   CollaborationSession[]
+  reviews    CodeReview[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String      @id @default(cuid())
+  role      ProjectRole @default(MEMBER)
+  joinedAt  DateTime    @default(now())
+
+  // Relations
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+model CollaborationSession {
+  id              String            @id @default(cuid())
+  filePath        String
+  fileName        String
+  language        String            @default("javascript")
+  currentContent  String            @default("")
+  version         Int               @default(1)
+  status          SessionStatus     @default(ACTIVE)
+  participants    Json              @default("[]")
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  // Relations
+  projectId    String
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  creatorId    String
+  creator      User        @relation(fields: [creatorId], references: [id])
+  operations   Operation[]
+  reviews      CodeReview[]
+
+  @@map("collaboration_sessions")
+}
+
+model Operation {
+  id            BigInt        @id @default(autoincrement())
+  type          OperationType
+  position      Int
+  content       String?
+  length        Int?
+  vectorClock   Json
+  createdAt     DateTime      @default(now())
+
+  // Relations
+  sessionId String
+  session   CollaborationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                 @relation(fields: [userId], references: [id])
+
+  @@map("operations")
+}
+
+model CodeReview {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  codeDiff    String       @default("")
+  status      ReviewStatus @default(DRAFT)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relations
+  sessionId String
+  session   CollaborationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  projectId String
+  project   Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User                 @relation("ReviewAuthor", fields: [authorId], references: [id])
+  assigneeId String?
+  assignee   User?               @relation("ReviewAssignee", fields: [assigneeId], references: [id])
+  comments   ReviewComment[]
+
+  @@map("code_reviews")
+}
+
+model ReviewComment {
+  id           String   @id @default(cuid())
+  content      String
+  lineNumber   Int?
+  threadId     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  reviewId  String
+  review    CodeReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User       @relation(fields: [authorId], references: [id])
+  parentId  String?
+  parent    ReviewComment? @relation("CommentReplies", fields: [parentId], references: [id])
+  replies   ReviewComment[] @relation("CommentReplies")
+
+  @@map("review_comments")
+}
+
+model AuditLog {
+  id           BigInt   @id @default(autoincrement())
+  action       String
+  resourceType String
+  resourceId   String?
+  metadata     Json?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  // Relations
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  PROJECT_OWNER
+  DEVELOPER
+  REVIEWER
+  VIEWER
+}
+
+enum ProjectRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum SessionStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum OperationType {
+  INSERT
+  DELETE
+  RETAIN
+}
+
+enum ReviewStatus {
+  DRAFT
+  OPEN
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  MERGED
+}

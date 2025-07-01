@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: collabcode-postgres
+    environment:
+      POSTGRES_DB: collabcode_dev
+      POSTGRES_USER: collabcode
+      POSTGRES_PASSWORD: dev_password_123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U collabcode -d collabcode_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: collabcode-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes
+
+  adminer:
+    image: adminer:latest
+    container_name: collabcode-adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: collabcode-redis-commander
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    environment:
+      REDIS_HOSTS: local:redis:6379
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: collabcode-network
